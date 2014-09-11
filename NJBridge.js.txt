@@ -1,0 +1,93 @@
+(function(win,doc,undefined){
+  if( win.NJBridge ){
+    return;
+  }
+
+  var _messageFrame,
+      _messages = [],
+      _callbackMap = {},
+      _bindingEvents = {},
+      callbackId = 0;
+
+
+  function getMessageFrame(){
+      if( _messageFrame )
+        return _messageFrame;
+
+
+      var ifr = document.createElement('iframe');
+      ifr.style.display = 'none';
+      document.body.appendChild(ifr);
+
+      return _messageFrame = ifr;
+  }
+
+
+  function notifyNative(){
+    getMessageFrame().src = "njscheme://MessageOnAir";
+  }
+
+
+  var NJBridge = win.NJBridge = {
+    invoke : function( name , data , responseCallback ){
+
+      if( typeof data === 'function'){
+        responseCallback = data;
+        data = null;
+      }
+
+      var message = {
+        name : name,
+        data : data || {},
+        id : ++callbackId
+      };
+
+      if( responseCallback ){
+          _callbackMap[ callbackId ] = responseCallback;
+      }
+
+      _messages.push(message);
+
+      notifyNative();
+    },
+    on : function( name , responseCallback){
+
+      if( !_bindingEvents[name])
+        _bindingEvents[name] = [];
+
+      _bindingEvents[name].push( responseCallback || function(){});
+    },
+
+    _dispatchCallbackEvent : function( id , data ){
+      id = id * 1;
+      if( !isNaN(id) && _callbackMap[id] ){
+        try{
+          var callback = _callbackMap[id];
+          delete _callbackMap[id];
+          callback.call(NJBridge,data);
+        }catch(e){}
+      }
+    },
+
+    _dispatchNativeEvent : function( name , data ){
+      if( _bindingEvents[name] ){
+        _bindingEvents[name].forEach(function(responseCallback){
+          try{
+            responseCallback.call(NJBridge,data);
+          }catch(e){}
+        });
+      }
+    },
+
+    _popAllMessage : function(){
+      var serializeMessage = JSON.stringify(_messages);
+      _messages.length = 0;
+      return serializeMessage;
+    }
+  };
+
+	var readyEvent = doc.createEvent('Events')
+	readyEvent.initEvent('NJBridgeReady')
+	doc.dispatchEvent(readyEvent);
+
+})(window,document);
